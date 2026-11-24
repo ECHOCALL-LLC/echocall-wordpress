@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  # Every PHP version the plugin promises to run on, from "Requires PHP" up.
+  php:
+    name: PHP ${{ matrix.php }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['7.4', '8.0', '8.1', '8.2', '8.3', '8.4', '8.5']
+    steps:
+      - uses: actions/checkout@v7
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          coverage: none
+          tools: none
+      - name: Syntax check
+        run: sh .github/scripts/lint-php.sh
+
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Versions agree
+        run: sh .github/scripts/check-versions.sh
+      - name: Build the plugin ZIP
+        run: sh .github/scripts/build-zip.sh
+      # The ZIP is what people install, so it is checked like a release would be.
+      - name: The ZIP holds the plugin and nothing else
+        run: |
+          unzip -Z1 build/echocall-chat-widget.zip | sort > files.txt
+          cat files.txt
+          grep -qx 'echocall-chat-widget/echocall-chat-widget.php' files.txt
+          grep -qx 'echocall-chat-widget/readme.txt' files.txt
+          grep -qx 'echocall-chat-widget/LICENSE' files.txt
+          if grep -v '^echocall-chat-widget/' files.txt; then echo 'Files outside the plugin folder'; exit 1; fi
+          if grep -E '/(\.github|README\.md|CHANGELOG\.md|CONTRIBUTING\.md|SECURITY\.md)' files.txt; then echo 'GitHub files in the ZIP'; exit 1; fi
+      - uses: actions/upload-artifact@v7
+        with:
+          name: echocall-chat-widget
+          path: build/echocall-chat-widget.zip
+          retention-days: 14

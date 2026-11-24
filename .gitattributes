@@ -1,0 +1,10 @@
+* text=auto eol=lf
+
+# Files for GitHub only. The release ZIP holds the plugin and its LICENSE, nothing else.
+/.github export-ignore
+/.gitattributes export-ignore
+/.gitignore export-ignore
+/README.md export-ignore
+/CHANGELOG.md export-ignore
+/CONTRIBUTING.md export-ignore
+/SECURITY.md export-ignore

@@ -1,0 +1,56 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+  deployments: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '7.4'
+          coverage: none
+          tools: none
+      - name: Syntax check on the oldest supported PHP
+        run: sh .github/scripts/lint-php.sh
+      - name: Versions agree with the tag
+        run: sh .github/scripts/check-versions.sh "$GITHUB_REF_NAME"
+      - name: Build the plugin ZIP
+        run: sh .github/scripts/build-zip.sh
+      # The notes are the section this version already has in the changelog.
+      - name: Cut the changelog section for this tag
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          awk -v header="## [$tag]" '
+            index($0, header) == 1 { printing = 1; next }
+            printing && index($0, "## [") == 1 { exit }
+            printing { print }
+          ' CHANGELOG.md > notes.md
+          if [ ! -s notes.md ]; then
+            echo "CHANGELOG.md has no section for $tag"
+            exit 1
+          fi
+      # The asset keeps the same name in every release, so
+      # releases/latest/download/echocall-chat-widget.zip always serves the newest one.
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release create "$GITHUB_REF_NAME" build/echocall-chat-widget.zip --verify-tag --title "$GITHUB_REF_NAME" --notes-file notes.md
+      # A published release is what people install, so the released commit is
+      # recorded as a production deployment. That is how the EchoCall team sees it as live.
+      - name: Record the release as live
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          id=$(jq -n --arg ref "$GITHUB_SHA" --arg description "release $GITHUB_REF_NAME" \
+            '{ref: $ref, environment: "production", description: $description, required_contexts: [], auto_merge: false, production_environment: true}' \
+            | gh api "repos/$GITHUB_REPOSITORY/deployments" --input - --jq .id)
+          gh api "repos/$GITHUB_REPOSITORY/deployments/$id/statuses" -f state=success -f environment=production -f description=Live --silent
+          echo "Deployment $id recorded for $GITHUB_SHA"
